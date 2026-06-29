@@ -368,6 +368,13 @@ func TestBeforeAnnotationsPreserved(t *testing.T) {
 	defer nw.Stop()
 	nr := nw.ResultChan()
 
+	t.Log("Waiting for node controller to be ready")
+	select {
+	case <-node.Ready():
+	case <-ctx.Done():
+		t.Fatal("context canceled waiting for node controller ready")
+	}
+
 	t.Log("Waiting for node to exist")
 	assert.NilError(t, <-waitForEvent(ctx, nr, func(e watch.Event) bool {
 		return e.Object != nil

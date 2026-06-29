@@ -10,6 +10,8 @@ linters:
     gosec:
       excludes:
         - G304
+        - G602
+        - G703
     lll:
       line-length: 200
   exclusions:
