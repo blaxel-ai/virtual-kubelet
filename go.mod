@@ -12,7 +12,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.66.1
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
@@ -21,7 +21,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go.opentelemetry.io/otel/trace v1.38.0
 	golang.org/x/sync v0.17.0
-	golang.org/x/time v0.13.0
+	golang.org/x/time v0.14.0
 	google.golang.org/protobuf v1.36.8
 	gotest.tools v2.2.0+incompatible
 	k8s.io/api v0.34.1
@@ -51,7 +51,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
