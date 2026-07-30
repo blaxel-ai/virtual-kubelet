@@ -17,6 +17,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -86,7 +87,11 @@ func (pc *PodController) createOrUpdatePod(ctx context.Context, pod *corev1.Pod)
 	// NOTE: Some providers return a non-nil error in their GetPod implementation when the pod is not found while some other don't.
 	// Hence, we ignore the error and just act upon the pod if it is non-nil (meaning that the provider still knows about the pod).
 	if podFromProvider, _ := pc.provider.GetPod(ctx, pod.Namespace, pod.Name); podFromProvider != nil {
-		if !podsEqual(podFromProvider, podForProvider) {
+		podsEqualForProvider := podsEqual
+		if !pc.skipDownwardAPIResolution {
+			podsEqualForProvider = podsEqualWithResolvedEnvs
+		}
+		if !podsEqualForProvider(podFromProvider, podForProvider) {
 			log.G(ctx).Debugf("Pod %s exists, updating pod in provider", podFromProvider.Name)
 			if origErr := pc.provider.UpdatePod(ctx, podForProvider); origErr != nil {
 				pc.handleProviderError(ctx, span, origErr, pod)
@@ -130,6 +135,41 @@ func podsEqual(pod1, pod2 *corev1.Pod) bool {
 		cmp.Equal(pod1.Labels, pod2.Labels) &&
 		cmp.Equal(pod1.Annotations, pod2.Annotations)
 
+}
+
+func podsEqualWithResolvedEnvs(pod1, pod2 *corev1.Pod) bool {
+	pod1 = pod1.DeepCopy()
+	pod2 = pod2.DeepCopy()
+
+	for i := range pod1.Spec.Containers {
+		sortResolvedEnvVars(pod1.Spec.Containers[i].Env)
+	}
+	for i := range pod2.Spec.Containers {
+		sortResolvedEnvVars(pod2.Spec.Containers[i].Env)
+	}
+	for i := range pod1.Spec.InitContainers {
+		sortResolvedEnvVars(pod1.Spec.InitContainers[i].Env)
+	}
+	for i := range pod2.Spec.InitContainers {
+		sortResolvedEnvVars(pod2.Spec.InitContainers[i].Env)
+	}
+	for i := range pod1.Spec.EphemeralContainers {
+		sortResolvedEnvVars(pod1.Spec.EphemeralContainers[i].Env)
+	}
+	for i := range pod2.Spec.EphemeralContainers {
+		sortResolvedEnvVars(pod2.Spec.EphemeralContainers[i].Env)
+	}
+
+	return podsEqual(pod1, pod2)
+}
+
+func sortResolvedEnvVars(envs []corev1.EnvVar) {
+	sort.Slice(envs, func(i, j int) bool {
+		if envs[i].Name != envs[j].Name {
+			return envs[i].Name < envs[j].Name
+		}
+		return envs[i].Value < envs[j].Value
+	})
 }
 
 func deleteGraceTimeEqual(old, new *int64) bool {
@@ -247,9 +287,9 @@ func (pc *PodController) updatePodStatus(ctx context.Context, podFromKubernetes 
 	}
 
 	// We need to do this because the other parts of the pod can be updated elsewhere. Since we're only updating
-	// the pod status, and we should be the sole writers of the pod status, we can blind overwrite it. Therefore
-	// we need to copy the pod and set ResourceVersion to 0.
-	podFromProvider.ResourceVersion = "0"
+	// the pod status, and we should be the sole writers of the pod status, set the current ResourceVersion to
+	// satisfy optimistic concurrency requirements.
+	podFromProvider.ResourceVersion = podFromKubernetes.ResourceVersion
 	if _, err := pc.client.Pods(podFromKubernetes.Namespace).UpdateStatus(ctx, podFromProvider, metav1.UpdateOptions{}); err != nil && !errors.IsNotFound(err) {
 		span.SetStatus(err)
 		return pkgerrors.Wrap(err, "error while updating pod status in kubernetes")
@@ -285,7 +325,7 @@ func (pc *PodController) enqueuePodStatusUpdate(ctx context.Context, pod *corev1
 	}
 	ctx = span.WithField(ctx, "key", key)
 
-	var obj interface{}
+	var obj any
 	err = wait.PollUntilContextCancel(ctx, notificationRetryPeriod, true, func(ctx context.Context) (bool, error) {
 		var ok bool
 		obj, ok = pc.knownPods.Load(key)
@@ -389,7 +429,7 @@ func (pc *PodController) deletePodsFromKubernetesHandler(ctx context.Context, ke
 	defer func() {
 		if retErr == nil {
 			if w, ok := pc.provider.(syncWrapper); ok {
-				w._deletePodKey(ctx, key)
+				w._deletePodKey(ctx, metaKey)
 			}
 		}
 	}()
